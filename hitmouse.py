@@ -17,6 +17,9 @@ score=0
 remaining_time=60
 username='玩家1'
 is_golden = False
+combo = 0        
+max_combo = 0    
+mole_timer = None  
 
 # 加载图片
 img = Image.open('mole.png')
@@ -59,7 +62,16 @@ def start_game():
     # 2. 切换盒子：隐藏开始界面，显示游戏界面
     start_frame.pack_forget()   
     game_frame.pack()
-    global is_golden
+    #重置后续状态
+    global combo, max_combo, mole_timer, is_golden
+    combo = 0
+    max_combo = 0
+    if mole_timer:
+        root.after_cancel(mole_timer)
+    mole_timer = None
+    combo_label.config(text="")
+    is_golden = False
+    btn.config(image=photo)
     is_golden = False
     btn.config(image=photo)           
     
@@ -76,6 +88,8 @@ game_frame.pack_propagate(False)
 
 #label
 label = tk.Label(game_frame, text="")
+combo_label = tk.Label(game_frame, text="", font=("微软雅黑", 16, "bold"), fg="red")
+combo_label.place(x=350, y=50)
 label.pack()
 
 def update_label():
@@ -93,6 +107,10 @@ def timing():
 
 def game_over():
     #切换到结束界面
+    global mole_timer
+    if mole_timer:
+        root.after_cancel(mole_timer)#取消计时
+        mole_timer = None
     game_frame.pack_forget()
     end_frame.pack()
 
@@ -112,14 +130,14 @@ def save_score():
         writer = csv.writer(f)
         # 如果文件不存在，先写入表头
         if not file_exists:
-            writer.writerow(["用户名", "得分", "设定时长", "日期"])
-        # 写入本次数据
+            writer.writerow(["用户名", "得分", "设定时长", "最高连击", "日期"])
         writer.writerow([
-            username,
-            score,
-            time_var.get(), 
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ])
+        username,
+        score,
+        time_var.get(),
+        max_combo,
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ])
 
 #排行榜
 def show():
@@ -132,11 +150,17 @@ def show():
     # 标题
     tk.Label(window, text="🏆 排行榜 Top 10", font=("微软雅黑", 20, "bold")).pack(pady=15)
     #表头
-    header = tk.Frame(window)
-    header.pack(fill="x", padx=20)
-    for text, width in [("排名", 6), ("玩家", 12), ("得分", 8), ("时长", 6), ("日期", 14)]:
-        tk.Label(header, text=text, font=("微软雅黑", 11, "bold"), width=width).pack(side="left")
+    # 表格容器（
+    table = tk.Frame(window)
+    table.pack(fill="x", padx=20)
 
+    # 列定义：(显示文字, 字符宽度)
+    cols = [("排名", 6), ("玩家", 12), ("得分", 8), ("时长", 6), ("连击", 6), ("日期", 14)]
+
+    # 表头
+    for c, (text, width) in enumerate(cols):
+        tk.Label(table, text=text, font=("微软雅黑", 11, "bold"),
+                 width=width, anchor="center").grid(row=0, column=c, padx=2, pady=2)
     # 读取数据
     records = []
     if os.path.exists("scores.csv"):
@@ -149,48 +173,77 @@ def show():
     records.sort(key=lambda x: int(x["得分"]), reverse=True)
 
     # 显示前10条
+        # 显示前10条（和表头同一个 table，用 grid）
     if records:
         for i, rec in enumerate(records[:10], 1):
-            row_frame = tk.Frame(window)
-            row_frame.pack(fill="x", padx=20, pady=2)
             vals = [
                 str(i),
                 rec["用户名"],
                 rec["得分"],
                 rec.get("设定时长", "-"),
-                rec["日期"][:10]  
+                rec.get("最高连击", "-"),
+                rec["日期"][:10]
             ]
-            widths = [6, 12, 8, 6, 14]
-            for v, w in zip(vals, widths):
-                tk.Label(row_frame, text=v, font=("微软雅黑", 11), width=w).pack(side="left")
+            for c, v in enumerate(vals):
+                tk.Label(table, text=v, font=("微软雅黑", 11),
+                         width=cols[c][1], anchor="center").grid(row=i, column=c, padx=2, pady=2)
     else:
         tk.Label(window, text="暂无记录，快去游戏吧！", font=("微软雅黑", 12)).pack(pady=20)
-
     tk.Button(window, text="关闭", font=("微软雅黑", 12), command=window.destroy).pack(pady=15)
+
+
+#地鼠逃跑了-----
+def miss_mole():
+    global combo, mole_timer
+    combo = 0
+    combo_label.config(text="")
+    
+    # 地鼠逃跑，换位置（不加分）
+    x = random.randint(10, 800 - img_w - 10)
+    y = random.randint(80, 800 - img_h - 10)
+    btn.place(x=x, y=y)
+    
+    # 重新启动 2 秒逃跑计时
+    mole_timer = root.after(1000, miss_mole)
 
 
 #移动函数
 def move():
-    global score, is_golden
+    global score, is_golden, combo, max_combo, mole_timer
     if remaining_time > 0:
-        # 计分：金色3分，普通1分
-        if is_golden:
-            score += 3
-        else:
-            score += 1
+        if mole_timer:
+            root.after_cancel(mole_timer)
+        
+        # 基础得分
+        points = 3 if is_golden else 1
+        score += points
+        
+        # 连击累加
+        combo += 1
+        if combo > max_combo:
+            max_combo = combo
+        
+        # 连击奖励：每满 3 连击额外 +1 分（3连+1，6连+2...）
+        bonus = combo // 3
+        score += bonus
+        
+        # 显示连击
+        combo_label.config(text=f"🔥 {combo} 连击!" if combo >= 2 else "")
         
         update_label()
         
+        # 移动地鼠
         x = random.randint(10, 800 - img_w - 10)
         y = random.randint(80, 800 - img_h - 10)
         btn.place(x=x, y=y)
         
-        # 30%概率刷出金色地鼠
-        is_golden = random.random() < 0.3
-        if is_golden:
-            btn.config(image=golden_photo)
-        else:
-            btn.config(image=photo)
+        # 随机金色
+        is_golden = random.random() < 0.25
+        btn.config(image=golden_photo if is_golden else photo)
+        
+        # 启动新的 2 秒逃跑计时
+        mole_timer = root.after(1000, miss_mole)
+        
         
 
 #创建按键
