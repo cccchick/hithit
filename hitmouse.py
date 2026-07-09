@@ -1,10 +1,11 @@
 import tkinter as tk
-from PIL import Image, ImageTk 
+from PIL import Image, ImageTk, ImageEnhance
 import random
 import winsound
 import csv        
 import os           
 from datetime import datetime 
+
 
 #界面
 root=tk.Tk()
@@ -15,11 +16,16 @@ root.geometry("800x800")
 score=0
 remaining_time=60
 username='玩家1'
+is_golden = False
 
 # 加载图片
 img = Image.open('mole.png')
 img_w, img_h = img.size
 photo = ImageTk.PhotoImage(img)
+# 基于原图生成金色地鼠（加饱和度 + 加亮度）
+golden_img = ImageEnhance.Color(img).enhance(2.5)
+golden_img = ImageEnhance.Brightness(golden_img).enhance(1.2)
+golden_photo = ImageTk.PhotoImage(golden_img)
 
 #start--------------------------------
 start_frame=tk.Frame(root,width=800,height=800)
@@ -52,7 +58,10 @@ def start_game():
     
     # 2. 切换盒子：隐藏开始界面，显示游戏界面
     start_frame.pack_forget()   
-    game_frame.pack()           
+    game_frame.pack()
+    global is_golden
+    is_golden = False
+    btn.config(image=photo)           
     
     # 3. 初始化游戏
     update_label()
@@ -162,17 +171,27 @@ def show():
 
 #移动函数
 def move():
-    global score
+    global score, is_golden
     if remaining_time > 0:
-        score += 1
+        # 计分：金色3分，普通1分
+        if is_golden:
+            score += 3
+        else:
+            score += 1
+        
         update_label()
         
         x = random.randint(10, 800 - img_w - 10)
         y = random.randint(80, 800 - img_h - 10)
-        
         btn.place(x=x, y=y)
-
-
+        
+        # 30%概率刷出金色地鼠
+        is_golden = random.random() < 0.3
+        if is_golden:
+            btn.config(image=golden_photo)
+        else:
+            btn.config(image=photo)
+        
 
 #创建按键
 btn = tk.Button(game_frame, image=photo, relief=tk.FLAT, borderwidth=0, command=move)
