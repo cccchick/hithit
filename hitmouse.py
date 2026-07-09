@@ -2,6 +2,9 @@ import tkinter as tk
 from PIL import Image, ImageTk 
 import random
 import winsound
+import csv        
+import os           
+from datetime import datetime 
 
 #界面
 root=tk.Tk()
@@ -86,11 +89,77 @@ def game_over():
 
     final_label.config(text=f"🎉 游戏结束！\n\n玩家：{username}\n最终得分：{score}")
     
+    save_score()
+
     try:
         winsound.MessageBeep(winsound.MB_ICONHAND)  # 结束提示音（Windows）
     except:
         pass
     
+#读取csv
+def save_score():
+    file_exists = os.path.exists("scores.csv")
+    with open("scores.csv", "a", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        # 如果文件不存在，先写入表头
+        if not file_exists:
+            writer.writerow(["用户名", "得分", "设定时长", "日期"])
+        # 写入本次数据
+        writer.writerow([
+            username,
+            score,
+            time_var.get(), 
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ])
+
+#排行榜
+def show():
+    #弹窗显示
+    window = tk.Toplevel(root)           
+    window.title("🏆 排行榜")
+    window.geometry("500x600")
+    window.resizable(False, False)
+
+    # 标题
+    tk.Label(window, text="🏆 排行榜 Top 10", font=("微软雅黑", 20, "bold")).pack(pady=15)
+    #表头
+    header = tk.Frame(window)
+    header.pack(fill="x", padx=20)
+    for text, width in [("排名", 6), ("玩家", 12), ("得分", 8), ("时长", 6), ("日期", 14)]:
+        tk.Label(header, text=text, font=("微软雅黑", 11, "bold"), width=width).pack(side="left")
+
+    # 读取数据
+    records = []
+    if os.path.exists("scores.csv"):
+        with open("scores.csv", "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                records.append(row)
+
+    #排序
+    records.sort(key=lambda x: int(x["得分"]), reverse=True)
+
+    # 显示前10条
+    if records:
+        for i, rec in enumerate(records[:10], 1):
+            row_frame = tk.Frame(window)
+            row_frame.pack(fill="x", padx=20, pady=2)
+            vals = [
+                str(i),
+                rec["用户名"],
+                rec["得分"],
+                rec.get("设定时长", "-"),
+                rec["日期"][:10]  
+            ]
+            widths = [6, 12, 8, 6, 14]
+            for v, w in zip(vals, widths):
+                tk.Label(row_frame, text=v, font=("微软雅黑", 11), width=w).pack(side="left")
+    else:
+        tk.Label(window, text="暂无记录，快去游戏吧！", font=("微软雅黑", 12)).pack(pady=20)
+
+    tk.Button(window, text="关闭", font=("微软雅黑", 12), command=window.destroy).pack(pady=15)
+
+
 #移动函数
 def move():
     global score
@@ -127,8 +196,11 @@ def back_to_start():
 
 tk.Button(end_frame, text="再来一局", font=("微软雅黑", 14), 
           width=12, command=back_to_start).pack(pady=30)
+tk.Button(end_frame, text="🏆 排行榜", font=("微软雅黑", 14), 
+          width=12, command=show).pack(pady=10)
 tk.Button(end_frame, text="退出游戏", font=("微软雅黑", 14), 
           width=12, command=root.destroy).pack(pady=10)
+
 
 root.mainloop()
 
