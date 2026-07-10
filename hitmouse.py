@@ -6,12 +6,34 @@ import csv
 import os           
 from datetime import datetime 
 
+# ========== 窗口与洞位配置 ==========
+WIN_W, WIN_H = 1000, 750  # 适配背景图比例
+
+# 16个洞口 (中心x, 中心y, 地鼠大小)
+HOLES = [
+    (150, 170, 60),  (350, 170, 60),  (550, 170, 60),  (750, 170, 60),   # 第1行（远，小）
+    (80, 290, 80),   (260, 290, 80),  (440, 290, 80),  (620, 290, 80),   (800, 290, 80),  # 第2行
+    (140, 440, 100), (380, 440, 100), (620, 440, 100), (860, 440, 100),  # 第3行
+    (240, 600, 130), (500, 600, 130), (760, 600, 130),                   # 第4行（近，大）
+]
+
+# 照片缓存（每种尺寸只生成一次，避免闪烁）
+mole_photos = {}
+golden_photos = {}
+
 
 #界面
 root=tk.Tk()
 root.title("打地鼠")
-root.geometry("800x800")
+root.geometry(f"{WIN_W}x{WIN_H}")
 
+#加载背景图
+try:
+    bg_img = Image.open("background.jpg").resize((WIN_W, WIN_H))
+    bg_photo = ImageTk.PhotoImage(bg_img)
+except Exception as e:
+    print(f"背景加载失败: {e}")
+    bg_photo = None
 #全局变量
 score=0
 remaining_time=60
@@ -31,7 +53,7 @@ golden_img = ImageEnhance.Brightness(golden_img).enhance(1.2)
 golden_photo = ImageTk.PhotoImage(golden_img)
 
 #start--------------------------------
-start_frame=tk.Frame(root,width=800,height=800)
+start_frame = tk.Frame(root, width=WIN_W, height=WIN_H)
 start_frame.pack_propagate(False)
 start_frame.pack()      
 
@@ -62,6 +84,17 @@ def start_game():
     # 2. 切换盒子：隐藏开始界面，显示游戏界面
     start_frame.pack_forget()   
     game_frame.pack()
+
+    #加背景
+    if bg_photo:
+        bg_label = tk.Label(game_frame, image=bg_photo)
+        bg_label.place(x=0, y=0)
+        bg_label.lower()
+        print("背景加载成功")  # ← 加这行
+    else:
+        print("背景加载失败，文件可能不存在")  # ← 加这行
+
+    
     #重置后续状态
     global combo, max_combo, mole_timer, is_golden
     combo = 0
@@ -75,6 +108,12 @@ def start_game():
     is_golden = False
     btn.config(image=photo)           
     
+    global current_hole
+    current_hole = 0
+    is_golden = False
+    btn.config(image=get_mole_photo(80, False))  # 默认大小
+    btn.image = get_mole_photo(80, False)
+    combo_label.config(text="")
     # 3. 初始化游戏
     update_label()
     timing()                    # 启动倒计时
@@ -83,7 +122,7 @@ tk.Button(start_frame, text="开始游戏", font=("微软雅黑", 14),
           width=12, command=start_game).pack(pady=40)
 
 #游戏界面--------------------------------
-game_frame = tk.Frame(root, width=800, height=800)
+game_frame = tk.Frame(root, width=WIN_W, height=WIN_H)
 game_frame.pack_propagate(False)
 
 #label
@@ -194,57 +233,71 @@ def show():
 
 #地鼠逃跑了-----
 def miss_mole():
-    global combo, mole_timer
+    """地鼠逃跑，换下一个洞"""
+    global combo, mole_timer, is_golden, current_hole
     combo = 0
     combo_label.config(text="")
     
-    # 地鼠逃跑，换位置（不加分）
-    x = random.randint(10, 800 - img_w - 10)
-    y = random.randint(80, 800 - img_h - 10)
+    # 随机换洞
+    current_hole = random.randint(0, len(HOLES) - 1)
+    x, y, size = HOLES[current_hole]
+    
+    is_golden = random.random() < 0.1
+    photo_to_use = get_mole_photo(size, is_golden)
+    
+    btn.config(image=photo_to_use)
+    btn.image = photo_to_use
     btn.place(x=x, y=y)
     
-    # 重新启动 2 秒逃跑计时
-    mole_timer = root.after(1000, miss_mole)
+    mole_timer = root.after(2000, miss_mole)
 
+#照片缓存函数
+def get_mole_photo(size, golden=False):
+    """按尺寸取缓存照片，没有就生成"""
+    cache = golden_photos if golden else mole_photos
+    if size not in cache:
+        # 按比例缩放
+        resized = img.resize((size, int(size * 1.1)))
+        if golden:
+            # 金色：加饱和度 + 亮度
+            r = ImageEnhance.Color(resized).enhance(2.5)
+            r = ImageEnhance.Brightness(r).enhance(1.2)
+            cache[size] = ImageTk.PhotoImage(r)
+        else:
+            cache[size] = ImageTk.PhotoImage(resized)
+    return cache[size]
 
 #移动函数
 def move():
-    global score, is_golden, combo, max_combo, mole_timer
+    global score, is_golden, combo, max_combo, mole_timer, current_hole
     if remaining_time > 0:
         if mole_timer:
             root.after_cancel(mole_timer)
         
-        # 基础得分
+        # 计分
         points = 3 if is_golden else 1
         score += points
-        
-        # 连击累加
         combo += 1
         if combo > max_combo:
             max_combo = combo
-        
-        # 连击奖励：每满 3 连击额外 +1 分（3连+1，6连+2...）
         bonus = combo // 3
         score += bonus
         
-        # 显示连击
         combo_label.config(text=f"🔥 {combo} 连击!" if combo >= 2 else "")
-        
         update_label()
         
-        # 移动地鼠
-        x = random.randint(10, 800 - img_w - 10)
-        y = random.randint(80, 800 - img_h - 10)
+        # 随机选洞，根据地鼠大小调整照片
+        current_hole = random.randint(0, len(HOLES) - 1)
+        x, y, size = HOLES[current_hole]
+        
+        is_golden = random.random() < 0.1
+        photo_to_use = get_mole_photo(size, is_golden)
+        
+        btn.config(image=photo_to_use)
+        btn.image = photo_to_use  # 保持引用
         btn.place(x=x, y=y)
         
-        # 随机金色
-        is_golden = random.random() < 0.25
-        btn.config(image=golden_photo if is_golden else photo)
-        
-        # 启动新的 2 秒逃跑计时
-        mole_timer = root.after(1000, miss_mole)
-        
-        
+        mole_timer = root.after(2000, miss_mole)
 
 #创建按键
 btn = tk.Button(game_frame, image=photo, relief=tk.FLAT, borderwidth=0, command=move)
@@ -253,7 +306,7 @@ btn.place(x=200, y=200)
 
 
 #结束界面------------------------------------------------
-end_frame = tk.Frame(root, width=800, height=800)
+end_frame = tk.Frame(root, width=WIN_W, height=WIN_H)
 end_frame.pack_propagate(False)
 
 tk.Label(end_frame, text="⛏️ 打地鼠", font=("微软雅黑", 40, "bold")).pack(pady=80)
