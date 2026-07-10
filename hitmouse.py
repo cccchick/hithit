@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 
 
-# ========== 新增：图片处理辅助函数 ==========
+#图片处理辅助函数 
 def make_white_transparent(img, threshold=35):
     """将图片中的白色背景转为透明
 
@@ -37,7 +37,7 @@ def make_white_transparent(img, threshold=35):
     return img
 
 
-# ========== 窗口与洞位配置 ==========
+# 窗口与洞位配置 
 WIN_W, WIN_H = 1000, 750  # 适配背景图比例
 
 # 16个洞口 (中心x, 中心y, 地鼠大小) —— 根据 background.jpg 实际洞位标定
@@ -450,8 +450,13 @@ def spawn_mole():
     game_canvas.coords(btn, x, y - photo_to_use.height() // 2)
     game_canvas.tag_raise(btn)
 
-    # 启动 2秒 逃跑计时器
-    mole_timer = root.after(2000, miss_mole)
+    # 启动逃跑计时器（随时间推进逐渐加速，任意时长开局都是 2000ms，最快 600ms）
+    total_time = int(time_var.get())
+    if total_time > 0:
+        stay_time = max(600, int(remaining_time / total_time * 1400 + 600))
+    else:
+        stay_time = 2000
+    mole_timer = root.after(stay_time, miss_mole)
 
 #创建地鼠（用画布图片实现透明底叠加）
 btn = game_canvas.create_image(200, 200, image=photo, anchor="center")
