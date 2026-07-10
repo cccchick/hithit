@@ -2,53 +2,22 @@ import tkinter as tk
 from PIL import Image, ImageTk, ImageEnhance
 import random
 import winsound
-import csv
-import os
-from datetime import datetime
+import csv        
+import os           
+from datetime import datetime 
 
-
-# ========== 新增：图片处理辅助函数 ==========
-def make_white_transparent(img, threshold=35):
-    """将图片中的白色背景转为透明
-
-    Args:
-        img: PIL Image 对象
-        threshold: 与纯白色的距离阈值，越小越严格（推荐 30-50）
-    """
-    img = img.convert("RGBA")
-    datas = img.getdata()
-    white = (255, 255, 255)
-    new_data = []
-    transparent_count = 0
-
-    for item in datas:
-        # 计算与纯白色的欧氏距离
-        distance = ((item[0] - white[0])**2 +
-                    (item[1] - white[1])**2 +
-                    (item[2] - white[2])**2) ** 0.5
-        if distance < threshold:
-            new_data.append((255, 255, 255, 0))
-            transparent_count += 1
-        else:
-            new_data.append(item)
-
-    img.putdata(new_data)
-    print(f"去白底完成：共 {len(datas)} 像素，转为透明 {transparent_count} 像素")
-    return img
-
-
-# ========== 窗口与洞位配置 ==========
+# 窗口与洞位配置 
 WIN_W, WIN_H = 1000, 750  # 适配背景图比例
 
-# 16个洞口 (中心x, 中心y, 地鼠大小) —— 根据 background.jpg 实际洞位标定
+# 16个洞口 (中心x, 中心y, 地鼠大小)  background.jpg 实际洞位标定
 HOLES = [
-    (225, 294, 55),  (405, 295, 55),  (584, 295, 55),  (751, 295, 55),   # 第1行（远，小）
-    (112, 380, 80),  (304, 380, 80),  (498, 380, 80),  (692, 379, 80),   (882, 379, 80),  # 第2行
-    (127, 496, 110), (372, 496, 110), (627, 497, 110), (868, 495, 110),  # 第3行
-    (166, 655, 150), (498, 656, 150), (830, 655, 150),                   # 第4行（近，大）
+    (225, 294, 55),  (405, 295, 55),  (584, 295, 55),  (751, 295, 55),   
+    (112, 380, 80),  (304, 380, 80),  (498, 380, 80),  (692, 379, 80),   (882, 379, 80),  
+    (127, 496, 110), (372, 496, 110), (627, 497, 110), (868, 495, 110), 
+    (166, 655, 150), (498, 656, 150), (830, 655, 150),                   
 ]
 
-# 照片缓存（每种尺寸只生成一次，避免闪烁）
+# 照片缓存
 mole_photos = {}
 golden_photos = {}
 
@@ -63,24 +32,15 @@ try:
     bg_img = Image.open("background.jpg").resize((WIN_W, WIN_H))
     bg_photo = ImageTk.PhotoImage(bg_img)
 except Exception as e:
-    print(f"背景加载失败: {e}")
     bg_photo = None
 #全局变量
 score=0
 remaining_time=60
 username='玩家1'
 is_golden = False
-combo = 0
-max_combo = 0
-mole_timer = None
-
-# 全局变量（新增）
-HAMMER_SIZE = 100
-HIT_DELAY = 200
-hammer_photo = None
-hammer_id = None
-hit_photos = {}
-is_hit_state = False
+combo = 0        
+max_combo = 0    
+mole_timer = None  
 
 # 加载图片
 img = Image.open('mole.png').convert('RGBA')
@@ -88,42 +48,24 @@ img_w, img_h = img.size
 
 
 def crop_mole(image):
-    """去掉地鼠图片底部的土堆，只保留从洞里钻出来的部分"""
+    #去掉地鼠图片底部的土堆，只保留从洞里钻出来的部分
     w, h = image.size
     return image.crop((0, 0, w, int(h * 0.58)))
 
 
 photo = ImageTk.PhotoImage(crop_mole(img))
+
+# 加载锤子图片
+try:
+    hammer_img = Image.open("锤子.png").resize((80, 80))
+    hammer_photo = ImageTk.PhotoImage(hammer_img)
+except:
+    hammer_photo = None
+
 # 基于原图生成金色地鼠（加饱和度 + 加亮度）
 golden_img = ImageEnhance.Color(crop_mole(img)).enhance(2.5)
 golden_img = ImageEnhance.Brightness(golden_img).enhance(1.2)
 golden_photo = ImageTk.PhotoImage(golden_img)
-
-# ========== 新增：加载锤子 ==========
-try:
-    hammer_raw = Image.open("锤子.png")
-    hammer_raw = make_white_transparent(hammer_raw)
-    w, h = hammer_raw.size
-    hammer_img = hammer_raw.resize((int(w * HAMMER_SIZE / h), HAMMER_SIZE), Image.Resampling.LANCZOS)
-    hammer_photo = ImageTk.PhotoImage(hammer_img)
-except Exception as e:
-    print(f"锤子加载失败: {e}")
-    hammer_photo = None
-
-
-# ========== 新增：生成被打地鼠的缓存 ==========
-def get_hit_photo(size):
-    """获取对应尺寸的‘被打晕’地鼠"""
-    if size not in hit_photos:
-        try:
-            hit_raw = Image.open("hitmole.png")
-            hit_raw = make_white_transparent(hit_raw)
-            hit_resized = hit_raw.resize((size, int(size * 1.1)))
-            hit_cropped = crop_mole(hit_resized)
-            hit_photos[size] = ImageTk.PhotoImage(hit_cropped)
-        except Exception:
-            hit_photos[size] = get_mole_photo(size, False)
-    return hit_photos[size]
 
 #start--------------------------------
 start_frame = tk.Frame(root, width=WIN_W, height=WIN_H)
@@ -159,7 +101,7 @@ def start_game():
     game_frame.pack()
 
     #重置后续状态
-    global combo, max_combo, mole_timer, is_golden, current_hole, is_hit_state
+    global combo, max_combo, mole_timer, is_golden, current_hole
     combo = 0
     max_combo = 0
     if mole_timer:
@@ -168,16 +110,13 @@ def start_game():
     combo_label.config(text="")
     is_golden = False
     current_hole = 0
-    is_hit_state = False
 
-    # --- 新增：隐藏系统鼠标，显示锤子 ---
-    game_canvas.config(cursor="none")
-    if hammer_id:
-        game_canvas.coords(hammer_id, WIN_W // 2, WIN_H // 2)
-        game_canvas.itemconfig(hammer_id, state='normal')
-
-    # 初始化第一只地鼠
-    spawn_mole()
+    # 初始化地鼠位置和大小
+    photo_to_use = get_mole_photo(80, False)
+    game_canvas.itemconfig(btn, image=photo_to_use)
+    x, y, size = HOLES[current_hole]
+    game_canvas.coords(btn, x, y - photo_to_use.height() // 2)
+    game_canvas.tag_raise(btn)
 
     # 3. 初始化游戏
     update_label()
@@ -190,7 +129,7 @@ tk.Button(start_frame, text="开始游戏", font=("微软雅黑", 14),
 game_frame = tk.Frame(root, width=WIN_W, height=WIN_H)
 game_frame.pack_propagate(False)
 
-# 使用画布显示背景图和地鼠，才能正确支持透明 PNG 叠加
+# 正确支持透明 PNG 叠加
 game_canvas = tk.Canvas(game_frame, width=WIN_W, height=WIN_H, highlightthickness=0)
 game_canvas.pack(fill="both", expand=True)
 if bg_photo:
@@ -204,6 +143,8 @@ label = tk.Label(game_frame, text="", bg="#a8e063")
 combo_label = tk.Label(game_frame, text="", font=("微软雅黑", 16, "bold"), fg="red", bg="#a8e063")
 combo_label.place(x=350, y=50)
 label.place(x=300, y=10)
+
+
 
 def update_label():
     label.config(text=f"玩家：{username} | 得分：{score} | 剩余时间：{remaining_time}")
@@ -220,22 +161,15 @@ def timing():
 
 def game_over():
     #切换到结束界面
-    global mole_timer, is_hit_state
+    global mole_timer
     if mole_timer:
         root.after_cancel(mole_timer)#取消计时
         mole_timer = None
-
-    # --- 新增：恢复系统鼠标，隐藏锤子 ---
-    game_canvas.config(cursor="")
-    if hammer_id:
-        game_canvas.itemconfig(hammer_id, state='hidden')
-    is_hit_state = False
-
     game_frame.pack_forget()
     end_frame.pack()
 
     final_label.config(text=f"🎉 游戏结束！\n\n玩家：{username}\n最终得分：{score}")
-
+    
     save_score()
 
     try:
@@ -314,20 +248,26 @@ def show():
 
 #地鼠逃跑了-----
 def miss_mole():
-    """地鼠逃跑，重置连击，生成下一只"""
-    global combo, is_hit_state
-
-    # 如果正处于“被打中”的动画播放中，不用处理
-    if is_hit_state:
-        return
-
+    #地鼠逃跑，换下一个洞
+    global combo, mole_timer, is_golden, current_hole
     combo = 0
     combo_label.config(text="")
 
-    # 直接调用生成下一只，逻辑统一
-    spawn_mole()
+    # 随机换洞
+    current_hole = random.randint(0, len(HOLES) - 1)
+    x, y, size = HOLES[current_hole]
 
-#照片缓存函数
+    is_golden = random.random() < 0.1
+    photo_to_use = get_mole_photo(size, is_golden)
+
+    # 地鼠底部对齐洞口中心，模拟从洞里钻出来
+    game_canvas.itemconfig(btn, image=photo_to_use)
+    game_canvas.coords(btn, x, y - photo_to_use.height() // 2)
+    game_canvas.tag_raise(btn)
+
+    mole_timer = root.after(2000, miss_mole)
+
+#照片缓存函数(辅助)
 def get_mole_photo(size, golden=False):
     """按尺寸取缓存照片，没有就生成"""
     cache = golden_photos if golden else mole_photos
@@ -344,96 +284,44 @@ def get_mole_photo(size, golden=False):
             cache[size] = ImageTk.PhotoImage(cropped)
     return cache[size]
 
-# ========== 新增：鼠标点击判定 ==========
-def on_canvas_click(event):
-    global is_hit_state
-
-    # 如果已经显示“被打中”的图了，点击无效，防止连点刷分
-    if is_hit_state or remaining_time <= 0:
-        return
-
-    # 检测鼠标周围 10x10 区域内所有重叠的 Canvas 对象
-    # 即使锤子在最上层，地鼠只要在该区域内就能被识别
-    overlapped = game_canvas.find_overlapping(event.x - 5, event.y - 5,
-                                               event.x + 5, event.y + 5)
-    if btn in overlapped:
-        hit_mole()
 
 
-# ========== 新增：打击反馈逻辑 ==========
-def hit_mole():
-    global score, combo, max_combo, is_hit_state, mole_timer, current_hole
+#移动函数
+def move():
+    global score, is_golden, combo, max_combo, mole_timer, current_hole
+    if remaining_time > 0:
+        if mole_timer:
+            root.after_cancel(mole_timer)
 
-    # 1. 取消原来的“逃跑计时器”
-    if mole_timer:
-        root.after_cancel(mole_timer)
+        # 计分
+        points = 3 if is_golden else 1
+        score += points
+        combo += 1
+        if combo > max_combo:
+            max_combo = combo
+        bonus = combo // 3
+        score += bonus
 
-    # 2. 计分
-    points = 3 if is_golden else 1
-    score += points
-    combo += 1
-    if combo > max_combo:
-        max_combo = combo
-    bonus = combo // 3
-    score += bonus
+        combo_label.config(text=f"🔥 {combo} 连击!" if combo >= 2 else "")
+        update_label()
 
-    combo_label.config(text=f"🔥 {combo} 连击!" if combo >= 2 else "")
-    update_label()
+        # 随机选洞，根据地鼠大小调整照片
+        current_hole = random.randint(0, len(HOLES) - 1)
+        x, y, size = HOLES[current_hole]
 
-    # 3. 显示“被打晕”的图片
-    x, y, size = HOLES[current_hole]
-    hit_photo = get_hit_photo(size)
-    game_canvas.itemconfig(btn, image=hit_photo)
+        is_golden = random.random() < 0.1
+        photo_to_use = get_mole_photo(size, is_golden)
 
-    # 4. 进入“停顿状态”，防止重复点击
-    is_hit_state = True
+        # 地鼠底部对齐洞口中心，模拟从洞里钻出来
+        game_canvas.itemconfig(btn, image=photo_to_use)
+        game_canvas.coords(btn, x, y - photo_to_use.height() // 2)
+        game_canvas.tag_raise(btn)
 
-    # 5. 延时后生成下一只地鼠
-    root.after(HIT_DELAY, spawn_mole)
-
-
-# ========== 新增：生成新地鼠逻辑 ==========
-def spawn_mole():
-    global is_hit_state, mole_timer, is_golden, current_hole
-
-    # 恢复可点击状态
-    is_hit_state = False
-
-    # 随机选洞
-    current_hole = random.randint(0, len(HOLES) - 1)
-    x, y, size = HOLES[current_hole]
-    is_golden = random.random() < 0.1
-
-    # 换回普通地鼠或金地鼠图
-    photo_to_use = get_mole_photo(size, is_golden)
-    game_canvas.itemconfig(btn, image=photo_to_use)
-    game_canvas.coords(btn, x, y - photo_to_use.height() // 2)
-    game_canvas.tag_raise(btn)
-
-    # 启动 2秒 逃跑计时器
-    mole_timer = root.after(2000, miss_mole)
+        mole_timer = root.after(2000, miss_mole)
 
 #创建地鼠（用画布图片实现透明底叠加）
 btn = game_canvas.create_image(200, 200, image=photo, anchor="center")
-
-# ========== 新增：事件绑定 ==========
-# 1. 绑定整个画布的点击事件（代替原来的 tag_bind）
-game_canvas.bind("<Button-1>", on_canvas_click)
-
-# 2. 锤子跟随逻辑
-def move_hammer(event):
-    if hammer_id:
-        # 让锤子稍微偏右下一点，像握在手里
-        game_canvas.coords(hammer_id, event.x + 20, event.y + 20)
-        game_canvas.tag_raise(hammer_id)
-
-game_canvas.bind("<Motion>", move_hammer)
-
-# 创建锤子对象（初始隐藏）
-if hammer_photo:
-    hammer_id = game_canvas.create_image(-100, -100, image=hammer_photo, anchor="center", state='hidden')
-else:
-    hammer_id = None
+game_canvas.tag_bind(btn, "<Button-1>", lambda e: move())
 
 
 #结束界面------------------------------------------------
@@ -447,15 +335,8 @@ final_label.pack(pady=30)
 
 def back_to_start():
     #返回开始界面，重置状态
-    global is_hit_state
     end_frame.pack_forget()
     start_frame.pack()
-
-    # --- 新增：恢复系统鼠标，隐藏锤子 ---
-    game_canvas.config(cursor="")
-    if hammer_id:
-        game_canvas.itemconfig(hammer_id, state='hidden')
-    is_hit_state = False
 
 tk.Button(end_frame, text="再来一局", font=("微软雅黑", 14), 
           width=12, command=back_to_start).pack(pady=30)
